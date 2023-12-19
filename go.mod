@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/satori/go.uuid v1.2.0
 	go.uber.org/zap v1.26.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
