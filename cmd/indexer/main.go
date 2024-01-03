@@ -39,7 +39,11 @@ func main() {
 	startBlock := uint64(68277132) // freeflow deployment block
 	endBlock := startBlock + maxBlockQuery - 1
 
-	scanRangeEvents(startBlock, endBlock, flowClient, logger)
+	// scanRangeEvents(startBlock, endBlock, flowClient, logger)
+
+	for i := startBlock; i <= endBlock; i++ {
+		getBlockTxs(i, flowClient, logger)
+	}
 }
 
 func scanRangeEvents(startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger) {
@@ -89,12 +93,27 @@ func getBlockTxs(blockNum uint64, flowClient *client.Client, logger *zap.Logger)
 		}
 
 		for _, tID := range col.TransactionIDs {
-			logger.Info("TransactionID", zap.String("ID", tID.String()))
+			// logger.Info("TransactionID", zap.String("ID", tID.String()))
 			tx, err := flowClient.GetTransactionResult(ctx, tID)
 			if err != nil {
 				logger.Error("GetTransaction", zap.Error(err))
 			}
-			logger.Info("Transaction", zap.String("ID", tx.TransactionID.String()))
+			// logger.Info("Transaction", zap.String("ID", tx.TransactionID.String()))
+			// logger.Info("Transaction", zap.String("Status", tx.Status.String()))
+
+			for _, e := range tx.Events {
+				// logger.Info("Event", zap.String("Type", e.Type))
+				if e.Type != "A.88dd257fcf26d3cc.Inscription.Deposit" {
+					continue
+				}
+				logger.Info("Event", zap.String("TransactionID", e.TransactionID.String()))
+				logger.Info("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
+				logger.Info("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
+
+				flowEvent := flowUtils.FreeflowDeposit(e)
+				logger.Info("Event", zap.Uint64("ID", flowEvent.ID()))
+				logger.Info("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
+			}
 		}
 	}
 
