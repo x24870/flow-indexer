@@ -4,6 +4,9 @@ import (
 	"context"
 	"flow-indexer/internal/domain/account"
 	"flow-indexer/internal/domain/inscription"
+
+	"go.uber.org/zap"
+	"gorm.io/gorm/logger"
 )
 
 type Service interface {
@@ -26,12 +29,12 @@ func NewService(
 }
 
 func (s *service) UpdateBalance(ctx context.Context, insName, address string, isDeposit bool) error {
-	_, err := s.accountRepo.FirstOrCreate(ctx, address)
+	acc, err := s.accountRepo.FirstOrCreate(ctx, address)
 	if err != nil {
 		return err
 	}
 
-	balance, err := s.inscriptionRepo.GetorCreateByInscriptionAndAddress(ctx, insName, address)
+	balance, err := s.inscriptionRepo.GetorCreateByInscriptionAndAddress(ctx, insName, acc.Address)
 	if err != nil {
 		return err
 	}
@@ -42,5 +45,10 @@ func (s *service) UpdateBalance(ctx context.Context, insName, address string, is
 		balance.Amount -= 1
 	}
 
-	return s.inscriptionRepo.Update(ctx, balance)
+	err = s.inscriptionRepo.Update(ctx, balance)
+	if err != nil {
+		logger.Error("UpdateBalance", zap.Error(err))
+		return err
+	}
+	return nil
 }
