@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"flow-indexer/internal/adapter"
+	"flow-indexer/internal/domain/account"
+	"flow-indexer/internal/domain/inscription"
+	"flow-indexer/internal/service"
 	"flow-indexer/pkg/log"
 	"fmt"
+	"time"
 
 	flowUtils "flow-indexer/pkg/flow"
 
@@ -11,6 +16,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
+
+	gormpkg "flow-indexer/pkg/gorm"
 )
 
 func main() {
@@ -28,6 +35,51 @@ func main() {
 	defer sync()
 	logger := zap.L()
 
+	// prepare context
+	// ctx := app.GraceCtx(context.Background())
+
+	// init db
+	time.Sleep(1 * time.Second)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"abc", "abc", "db", "5432", "postgres")
+	logger.Info("dsn", zap.String("dsn", dsn))
+
+	db, err := gormpkg.NewGormPostgresConn(
+		gormpkg.Config{
+			DSN:             dsn,
+			MaxIdleConns:    2,
+			MaxOpenConns:    2,
+			ConnMaxLifetime: 10 * time.Minute,
+			SingularTable:   true,
+		},
+	)
+	if err != nil {
+		logger.Error("connect to database error", zap.Error(err))
+		return
+	}
+
+	// create extension
+	db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+
+	// migrate db
+	err = db.AutoMigrate(
+		&account.Account{},
+		&inscription.Balance{},
+	)
+	if err != nil {
+		logger.Error("migrate db error", zap.Error(err))
+		return
+	}
+
+	// prepare service
+	accountRepo := adapter.NewAccountRepo(db)
+	inscriptionRepo := adapter.NewInscriptionRepo(db)
+
+	svc := service.NewService(
+		accountRepo,
+		inscriptionRepo,
+	)
+
 	// init flow client
 	flowClient, err := client.New("access.mainnet.nodes.onflow.org:9000", grpc.WithInsecure())
 	if err != nil {
@@ -42,7 +94,7 @@ func main() {
 	// scanRangeEvents(startBlock, endBlock, flowClient, logger)
 
 	for i := startBlock; i <= endBlock; i++ {
-		getBlockTxs(i, flowClient, logger)
+		getBlockTxs(i, flowClient, logger, svc)
 	}
 }
 
@@ -78,7 +130,12 @@ func scanRangeEvents(startBlock, endBlock uint64, flowClient *client.Client, log
 	}
 }
 
-func getBlockTxs(blockNum uint64, flowClient *client.Client, logger *zap.Logger) {
+func getBlockTxs(
+	blockNum uint64,
+	flowClient *client.Client,
+	logger *zap.Logger,
+	svc service.Service,
+) {
 	ctx := context.Background()
 	block, err := flowClient.GetBlockByHeight(ctx, blockNum)
 	if err != nil {

@@ -13,7 +13,8 @@ type Balance struct {
 }
 
 type Repository interface {
-	GetByInscriptionAndAddress(ctx context.Context, inscription, address string) (*Balance, error)
+	GetorCreateByInscriptionAndAddress(ctx context.Context, inscription, address string) (*Balance, error)
+	Update(ctx context.Context, balance *Balance) error
 }
 
 func (Balance) TableName() string {
