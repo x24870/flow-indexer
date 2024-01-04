@@ -98,7 +98,7 @@ func ScanBatchEvents(
 				return
 			}
 
-			err = svc.UpdateBalance(context.Background(), "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
+			err = svc.UpdateBalance(context.Background(), "freeflow", fmt.Sprintf("%x", flowEvent.Address()), eventType == FreeflowDepositEventType)
 			if err != nil {
 				logger.Error("UpdateBalance", zap.Error(
 					fmt.Errorf(
@@ -152,7 +152,7 @@ func getBlockTxs(
 				logger.Debug("Event", zap.Uint64("ID", flowEvent.ID()))
 				logger.Debug("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
 
-				err := svc.UpdateBalance(ctx, "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
+				err := svc.UpdateBalance(ctx, "freeflow", fmt.Sprintf("%x", flowEvent.Address()), e.Type == FreeflowDepositEventType)
 				if err != nil {
 					logger.Error("UpdateBalance", zap.Error(err))
 					return
