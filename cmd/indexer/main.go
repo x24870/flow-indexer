@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flow-indexer/internal/adapter"
 	"flow-indexer/internal/domain/account"
 	flowEvent "flow-indexer/internal/domain/event"
@@ -108,167 +107,14 @@ func main() {
 	// endBlock := latestBlock.Height
 	endBlock := uint64(69106534)
 
-	fmt.Println(startBlock, endBlock)
-	blockRanges := getBlockRanges(startBlock, endBlock, uint64(thread))
+	logger.Info("start scan", zap.Uint64("startBlock", startBlock), zap.Uint64("endBlock", endBlock))
+	blockRanges := flowUtils.GetBlockRanges(startBlock, endBlock, uint64(thread))
 	var wg sync.WaitGroup
 	for _, blockRange := range blockRanges {
 		wg.Add(1)
-		fmt.Println(blockRange.startBlock, blockRange.endBlock)
-		scanRangeEvents(blockRange.startBlock, blockRange.endBlock, maxBlockQuery, flowClient, logger, svc, &wg)
+		logger.Info("scan range", zap.Uint64("startBlock", blockRange.StartBlock), zap.Uint64("endBlock", blockRange.EndBlock))
+		flowUtils.ScanRangeEvents(blockRange.StartBlock, blockRange.EndBlock, maxBlockQuery, flowClient, logger, svc, &wg)
 	}
 
 	wg.Wait()
-}
-
-type blockRange struct {
-	startBlock uint64
-	endBlock   uint64
-}
-
-func getBlockRanges(startBlock, endBlock, thread uint64) []blockRange {
-	totalBlocks := endBlock - startBlock + 1
-	groupSize := totalBlocks / thread
-	if groupSize == 0 {
-		groupSize = 1
-	}
-
-	var blockRanges []blockRange
-	for i := startBlock; i <= endBlock; i += groupSize {
-		end := i + groupSize - 1
-		if end > endBlock {
-			end = endBlock
-		}
-
-		blockRanges = append(blockRanges, blockRange{
-			startBlock: i,
-			endBlock:   end,
-		})
-
-		if end == endBlock {
-			break
-		}
-	}
-
-	return blockRanges
-}
-
-func scanRangeEvents(
-	startBlock, endBlock, maxBlockQuery uint64,
-	flowClient *client.Client,
-	logger *zap.Logger,
-	svc service.Service,
-	wg *sync.WaitGroup,
-) {
-	go func() {
-		for i := startBlock; i <= endBlock; i += maxBlockQuery {
-			end := i + maxBlockQuery - 1
-			if end > endBlock {
-				end = endBlock
-			}
-
-			scanBatchEvents(i, end, flowClient, logger, svc)
-		}
-		defer wg.Done()
-	}()
-}
-
-func scanBatchEvents(
-	startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger, svc service.Service,
-) {
-	freeflowDepositEventType := "A.88dd257fcf26d3cc.Inscription.Deposit"
-	bes, err := flowClient.GetEventsForHeightRange(context.Background(),
-		client.EventRangeQuery{
-			Type:        freeflowDepositEventType,
-			StartHeight: startBlock,
-			EndHeight:   endBlock,
-		})
-	if err != nil {
-		logger.Error("GetEventsForHeightRange", zap.Error(fmt.Errorf("range %x - %x", startBlock, endBlock)))
-		return
-	}
-
-	for _, be := range bes {
-		logger.Info("BlockEvent", zap.Uint64("BlockHeight", be.Height))
-		for _, e := range be.Events {
-			if e.Type != freeflowDepositEventType {
-				continue
-			}
-			logger.Info("Event", zap.String("Type", e.Type))
-			logger.Info("Event", zap.String("TransactionID", e.TransactionID.String()))
-			logger.Info("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
-			logger.Info("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
-
-			flowEvent := flowUtils.FreeflowDeposit(e)
-			logger.Info("Event", zap.Uint64("ID", flowEvent.ID()))
-			logger.Info("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
-
-			err := svc.CreateFlowEvent(context.Background(), fmt.Sprintf("%x", flowEvent.Address()), e.Type, be.Height)
-			if err != nil {
-				logger.Error("CreateFlowEvent", zap.Error(err))
-				return
-			}
-
-			err = svc.UpdateBalance(context.Background(), "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
-			if err != nil {
-				logger.Error("UpdateBalance", zap.Error(
-					fmt.Errorf(
-						"address: %x, height: %x, range %x - %x", flowEvent.Address(), be.Height, startBlock, endBlock,
-					),
-				))
-				return
-			}
-		}
-	}
-}
-
-func getBlockTxs(
-	blockNum uint64,
-	flowClient *client.Client,
-	logger *zap.Logger,
-	svc service.Service,
-) {
-	ctx := context.Background()
-	logger.Info("Block", zap.Uint64("BlockHeight", blockNum))
-	block, err := flowClient.GetBlockByHeight(ctx, blockNum)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, c := range block.CollectionGuarantees {
-		col, err := flowClient.GetCollection(ctx, c.CollectionID)
-		if err != nil {
-			logger.Error("GetCollection", zap.Error(err))
-		}
-
-		for _, tID := range col.TransactionIDs {
-			// logger.Info("TransactionID", zap.String("ID", tID.String()))
-			tx, err := flowClient.GetTransactionResult(ctx, tID)
-			if err != nil {
-				logger.Error("GetTransaction", zap.Error(err))
-			}
-			// logger.Info("Transaction", zap.String("ID", tx.TransactionID.String()))
-			// logger.Info("Transaction", zap.String("Status", tx.Status.String()))
-
-			for _, e := range tx.Events {
-				// logger.Info("Event", zap.String("Type", e.Type))
-				if e.Type != "A.88dd257fcf26d3cc.Inscription.Deposit" {
-					continue
-				}
-				// logger.Info("Event", zap.String("TransactionID", e.TransactionID.String()))
-				// logger.Info("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
-				// logger.Info("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
-
-				flowEvent := flowUtils.FreeflowDeposit(e)
-				// logger.Info("Event", zap.Uint64("ID", flowEvent.ID()))
-				// logger.Info("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
-
-				err := svc.UpdateBalance(ctx, "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
-				if err != nil {
-					logger.Error("UpdateBalance", zap.Error(err))
-					return
-				}
-			}
-		}
-	}
-
 }
