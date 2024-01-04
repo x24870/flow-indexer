@@ -4,10 +4,12 @@ import (
 	"context"
 	"flow-indexer/internal/adapter"
 	"flow-indexer/internal/domain/account"
+	flowEvent "flow-indexer/internal/domain/event"
 	"flow-indexer/internal/domain/inscription"
 	"flow-indexer/internal/service"
 	"flow-indexer/pkg/log"
 	"fmt"
+	"sync"
 	"time"
 
 	flowUtils "flow-indexer/pkg/flow"
@@ -22,9 +24,9 @@ import (
 
 func main() {
 	// init logger
-	sync, err := log.Init(log.Config{
+	syncFun, err := log.Init(log.Config{
 		Name:   "indexer.log",
-		Level:  zapcore.DebugLevel,
+		Level:  zapcore.ErrorLevel,
 		Stdout: true,
 		// File:   "log/indexer/indexer.log",
 		File: "",
@@ -32,7 +34,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer sync()
+	defer syncFun()
 	logger := zap.L()
 
 	// prepare context
@@ -65,6 +67,7 @@ func main() {
 	err = db.AutoMigrate(
 		&account.Account{},
 		&inscription.Balance{},
+		&flowEvent.FlowEvent{},
 	)
 	if err != nil {
 		logger.Error("migrate db error", zap.Error(err))
@@ -74,40 +77,104 @@ func main() {
 	// prepare service
 	accountRepo := adapter.NewAccountRepo(db)
 	inscriptionRepo := adapter.NewInscriptionRepo(db)
+	eventRepo := adapter.NewEventRepo(db)
 
 	svc := service.NewService(
 		accountRepo,
 		inscriptionRepo,
+		eventRepo,
 	)
 
 	// init flow client
-	flowClient, err := client.New("access.mainnet.nodes.onflow.org:9000", grpc.WithInsecure())
+	maxMsgSize := 50 * 1024 * 1024 // 50MB
+	flowClient, err := client.New(
+		"access.mainnet.nodes.onflow.org:9000",
+		grpc.WithInsecure(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMsgSize)),
+	)
+
 	if err != nil {
 		panic(err)
 	}
 
 	// scan
-	maxBlockQuery := uint64(250)
+	thread := 20
+	maxBlockQuery := uint64(250) - 1
 	startBlock := uint64(68277132) // freeflow deployment block
-	latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
-	if err != nil {
-		panic(err)
-	}
-	endBlock := latestBlock.Height
-
-	for i := startBlock; i <= endBlock; i += maxBlockQuery - 1 {
-		if i > endBlock {
-			i = endBlock
-		}
-		scanRangeEvents(i, i+maxBlockQuery-1, flowClient, logger, svc)
-	}
-
-	// for i := startBlock; i <= endBlock; i++ {
-	// 	getBlockTxs(i, flowClient, logger, svc)
+	// latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
+	// if err != nil {
+	// 	panic(err)
 	// }
+	// endBlock := latestBlock.Height
+	endBlock := uint64(69106534)
+
+	fmt.Println(startBlock, endBlock)
+	blockRanges := getBlockRanges(startBlock, endBlock, uint64(thread))
+	var wg sync.WaitGroup
+	for _, blockRange := range blockRanges {
+		wg.Add(1)
+		fmt.Println(blockRange.startBlock, blockRange.endBlock)
+		scanRangeEvents(blockRange.startBlock, blockRange.endBlock, maxBlockQuery, flowClient, logger, svc, &wg)
+	}
+
+	wg.Wait()
 }
 
-func scanRangeEvents(startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger, svc service.Service) {
+type blockRange struct {
+	startBlock uint64
+	endBlock   uint64
+}
+
+func getBlockRanges(startBlock, endBlock, thread uint64) []blockRange {
+	totalBlocks := endBlock - startBlock + 1
+	groupSize := totalBlocks / thread
+	if groupSize == 0 {
+		groupSize = 1
+	}
+
+	var blockRanges []blockRange
+	for i := startBlock; i <= endBlock; i += groupSize {
+		end := i + groupSize - 1
+		if end > endBlock {
+			end = endBlock
+		}
+
+		blockRanges = append(blockRanges, blockRange{
+			startBlock: i,
+			endBlock:   end,
+		})
+
+		if end == endBlock {
+			break
+		}
+	}
+
+	return blockRanges
+}
+
+func scanRangeEvents(
+	startBlock, endBlock, maxBlockQuery uint64,
+	flowClient *client.Client,
+	logger *zap.Logger,
+	svc service.Service,
+	wg *sync.WaitGroup,
+) {
+	go func() {
+		for i := startBlock; i <= endBlock; i += maxBlockQuery {
+			end := i + maxBlockQuery - 1
+			if end > endBlock {
+				end = endBlock
+			}
+
+			scanBatchEvents(i, end, flowClient, logger, svc)
+		}
+		defer wg.Done()
+	}()
+}
+
+func scanBatchEvents(
+	startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger, svc service.Service,
+) {
 	freeflowDepositEventType := "A.88dd257fcf26d3cc.Inscription.Deposit"
 	bes, err := flowClient.GetEventsForHeightRange(context.Background(),
 		client.EventRangeQuery{
@@ -116,28 +183,38 @@ func scanRangeEvents(startBlock, endBlock uint64, flowClient *client.Client, log
 			EndHeight:   endBlock,
 		})
 	if err != nil {
-		logger.Error("GetEventsForHeightRange", zap.Error(err))
+		logger.Error("GetEventsForHeightRange", zap.Error(fmt.Errorf("range %x - %x", startBlock, endBlock)))
 		return
 	}
 
 	for _, be := range bes {
-		// logger.Info("BlockEvent", zap.Uint64("BlockHeight", be.Height))
+		logger.Info("BlockEvent", zap.Uint64("BlockHeight", be.Height))
 		for _, e := range be.Events {
 			if e.Type != freeflowDepositEventType {
 				continue
 			}
-			// logger.Info("Event", zap.String("Type", e.Type))
-			// logger.Info("Event", zap.String("TransactionID", e.TransactionID.String()))
-			// logger.Info("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
-			// logger.Info("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
+			logger.Info("Event", zap.String("Type", e.Type))
+			logger.Info("Event", zap.String("TransactionID", e.TransactionID.String()))
+			logger.Info("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
+			logger.Info("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
 
 			flowEvent := flowUtils.FreeflowDeposit(e)
-			// logger.Info("Event", zap.Uint64("ID", flowEvent.ID()))
-			// logger.Info("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
+			logger.Info("Event", zap.Uint64("ID", flowEvent.ID()))
+			logger.Info("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
 
-			err := svc.UpdateBalance(context.Background(), "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
+			err := svc.CreateFlowEvent(context.Background(), fmt.Sprintf("%x", flowEvent.Address()), e.Type, be.Height)
 			if err != nil {
-				logger.Error("UpdateBalance", zap.Error(err))
+				logger.Error("CreateFlowEvent", zap.Error(err))
+				return
+			}
+
+			err = svc.UpdateBalance(context.Background(), "freeflow", fmt.Sprintf("%x", flowEvent.Address()), true)
+			if err != nil {
+				logger.Error("UpdateBalance", zap.Error(
+					fmt.Errorf(
+						"address: %x, height: %x, range %x - %x", flowEvent.Address(), be.Height, startBlock, endBlock,
+					),
+				))
 				return
 			}
 		}

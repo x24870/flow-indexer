@@ -16,7 +16,7 @@ func NewInscriptionRepo(db *gorm.DB) inscription.Repository {
 }
 
 func (r *inscriptionRepo) Update(ctx context.Context, balance *inscription.Balance) error {
-	return r.db.Debug().WithContext(ctx).Updates(balance).Error
+	return r.db.WithContext(ctx).Updates(balance).Error
 }
 
 func (r *inscriptionRepo) GetorCreateByInscriptionAndAddress(ctx context.Context, insName, address string) (*inscription.Balance, error) {

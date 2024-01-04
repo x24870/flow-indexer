@@ -14,7 +14,3 @@ func (evt FreeflowDeposit) ID() uint64 {
 func (evt FreeflowDeposit) Address() []byte {
 	return evt.Value.Fields[1].(cadence.Optional).Value.(cadence.Address).Bytes()
 }
-
-// func (evt FreeflowDeposit) EventIndex() uint64 {
-// 	return evt.Value.Fields[2].(cadence.UFix64).ToGoValue().(uint64)
-// }
