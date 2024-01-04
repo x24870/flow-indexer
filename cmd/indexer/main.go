@@ -113,7 +113,16 @@ func main() {
 	for _, blockRange := range blockRanges {
 		wg.Add(1)
 		logger.Info("scan range", zap.Uint64("startBlock", blockRange.StartBlock), zap.Uint64("endBlock", blockRange.EndBlock))
-		flowUtils.ScanRangeEvents(blockRange.StartBlock, blockRange.EndBlock, maxBlockQuery, flowClient, logger, svc, &wg)
+		flowUtils.ScanRangeEvents(
+			blockRange.StartBlock,
+			blockRange.EndBlock,
+			maxBlockQuery,
+			flowClient,
+			logger,
+			svc,
+			flowUtils.FreeflowWithdrawEventType,
+			&wg,
+		)
 	}
 
 	wg.Wait()

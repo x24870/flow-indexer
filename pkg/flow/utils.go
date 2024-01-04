@@ -6,21 +6,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/onflow/cadence"
-	flowGo "github.com/onflow/flow-go-sdk"
 	"github.com/onflow/flow-go-sdk/client"
 	"go.uber.org/zap"
 )
-
-type FreeflowDeposit flowGo.Event
-
-func (evt FreeflowDeposit) ID() uint64 {
-	return evt.Value.Fields[0].(cadence.UInt64).ToGoValue().(uint64)
-}
-
-func (evt FreeflowDeposit) Address() []byte {
-	return evt.Value.Fields[1].(cadence.Optional).Value.(cadence.Address).Bytes()
-}
 
 type BlockRange struct {
 	StartBlock uint64
@@ -59,6 +47,7 @@ func ScanRangeEvents(
 	flowClient *client.Client,
 	logger *zap.Logger,
 	svc service.Service,
+	eventType string,
 	wg *sync.WaitGroup,
 ) {
 	go func() {
@@ -68,19 +57,18 @@ func ScanRangeEvents(
 				end = endBlock
 			}
 
-			ScanBatchEvents(i, end, flowClient, logger, svc)
+			ScanBatchEvents(i, end, flowClient, logger, svc, eventType)
 		}
 		defer wg.Done()
 	}()
 }
 
 func ScanBatchEvents(
-	startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger, svc service.Service,
+	startBlock, endBlock uint64, flowClient *client.Client, logger *zap.Logger, svc service.Service, eventType string,
 ) {
-	freeflowDepositEventType := "A.88dd257fcf26d3cc.Inscription.Deposit"
 	bes, err := flowClient.GetEventsForHeightRange(context.Background(),
 		client.EventRangeQuery{
-			Type:        freeflowDepositEventType,
+			Type:        eventType,
 			StartHeight: startBlock,
 			EndHeight:   endBlock,
 		})
@@ -92,7 +80,7 @@ func ScanBatchEvents(
 	for _, be := range bes {
 		logger.Debug("BlockEvent", zap.Uint64("BlockHeight", be.Height))
 		for _, e := range be.Events {
-			if e.Type != freeflowDepositEventType {
+			if e.Type != eventType {
 				continue
 			}
 			logger.Debug("Event", zap.String("Type", e.Type))
@@ -153,7 +141,7 @@ func getBlockTxs(
 
 			for _, e := range tx.Events {
 				logger.Debug("Event", zap.String("Type", e.Type))
-				if e.Type != "A.88dd257fcf26d3cc.Inscription.Deposit" {
+				if e.Type != "A.88dd257fcf26d3cc.Inscription.Withdraw" {
 					continue
 				}
 				logger.Debug("Event", zap.String("TransactionID", e.TransactionID.String()))
