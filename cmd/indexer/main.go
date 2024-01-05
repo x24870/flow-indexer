@@ -85,7 +85,7 @@ func main() {
 	)
 
 	// init flow client
-	maxMsgSize := 50 * 1024 * 1024 // 50MB
+	maxMsgSize := 10 * 1024 * 1024 // 10MB
 	flowClient, err := client.New(
 		"access.mainnet.nodes.onflow.org:9000",
 		grpc.WithInsecure(),
@@ -97,7 +97,7 @@ func main() {
 	}
 
 	// scan
-	thread := 20
+	thread := 10
 	maxBlockQuery := uint64(250) - 1
 	startBlock := uint64(68277132) // freeflow deployment block
 	// latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)

@@ -73,7 +73,7 @@ func ScanBatchEvents(
 			EndHeight:   endBlock,
 		})
 	if err != nil {
-		logger.Error("GetEventsForHeightRange", zap.Error(fmt.Errorf("range %x - %x", startBlock, endBlock)))
+		logger.Error("GetEventsForHeightRange", zap.Error(fmt.Errorf("range %v - %v: %s", startBlock, endBlock, err)))
 		return
 	}
 
@@ -102,7 +102,7 @@ func ScanBatchEvents(
 			if err != nil {
 				logger.Error("UpdateBalance", zap.Error(
 					fmt.Errorf(
-						"address: %x, height: %x, range %x - %x", flowEvent.Address(), be.Height, startBlock, endBlock,
+						"address: %x, height: %v, range %v - %v: %e", flowEvent.Address(), be.Height, startBlock, endBlock, err,
 					),
 				))
 				return
