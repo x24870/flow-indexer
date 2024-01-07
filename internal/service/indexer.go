@@ -9,7 +9,7 @@ import (
 
 type Service interface {
 	UpdateBalance(ctx context.Context, insName, address string, isDeposit bool) error
-	CreateFlowEvent(ctx context.Context, account, event string, block uint64) error
+	CreateFlowEvent(ctx context.Context, nftID uint64, account, event string, block uint64) error
 }
 
 type service struct {
@@ -54,7 +54,7 @@ func (s *service) UpdateBalance(ctx context.Context, insName, address string, is
 	return nil
 }
 
-func (s *service) CreateFlowEvent(ctx context.Context, account, event string, block uint64) error {
+func (s *service) CreateFlowEvent(ctx context.Context, nftID uint64, account, event string, block uint64) error {
 	_, err := s.accountRepo.FirstOrCreate(ctx, account)
 	if err != nil {
 		return err
@@ -62,6 +62,7 @@ func (s *service) CreateFlowEvent(ctx context.Context, account, event string, bl
 
 	fe := flowEvent.FlowEvent{
 		Account: account,
+		NFTID:   nftID,
 		Event:   event,
 		Block:   block,
 	}

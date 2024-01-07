@@ -92,7 +92,7 @@ func ScanBatchEvents(
 			logger.Debug("Event", zap.Uint64("ID", flowEvent.ID()))
 			logger.Debug("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
 
-			err := svc.CreateFlowEvent(context.Background(), fmt.Sprintf("%x", flowEvent.Address()), e.Type, be.Height)
+			err := svc.CreateFlowEvent(context.Background(), flowEvent.ID(), fmt.Sprintf("%x", flowEvent.Address()), e.Type, be.Height)
 			if err != nil {
 				logger.Error("CreateFlowEvent", zap.Error(err))
 				return

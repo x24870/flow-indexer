@@ -10,6 +10,7 @@ import (
 type FlowEvent struct {
 	domain.Base
 	ID      uuid.UUID `gorm:"column:id;primaryKey;type:uuid;default:uuid_generate_v4()"`
+	NFTID   uint64    `gorm:"column:nft_id;type:integer;default:0"`
 	Account string    `gorm:"column:account;foreignKey;index;reference:Address"`
 	Event   string    `gorm:"column:event;type:varchar(256);index"`
 	Block   uint64    `gorm:"column:block;type:integer;default:0"`

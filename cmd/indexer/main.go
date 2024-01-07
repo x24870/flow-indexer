@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flow-indexer/internal/adapter"
 	"flow-indexer/internal/domain/account"
 	flowEvent "flow-indexer/internal/domain/event"
@@ -25,7 +26,7 @@ func main() {
 	// init logger
 	syncFun, err := log.Init(log.Config{
 		Name:   "indexer.log",
-		Level:  zapcore.ErrorLevel,
+		Level:  zapcore.InfoLevel,
 		Stdout: true,
 		// File:   "log/indexer/indexer.log",
 		File: "",
@@ -85,7 +86,7 @@ func main() {
 	)
 
 	// init flow client
-	maxMsgSize := 10 * 1024 * 1024 // 10MB
+	maxMsgSize := 50 * 1024 * 1024 // 50MB
 	flowClient, err := client.New(
 		"access.mainnet.nodes.onflow.org:9000",
 		grpc.WithInsecure(),
@@ -97,15 +98,15 @@ func main() {
 	}
 
 	// scan
-	thread := 10
+	thread := 15
 	maxBlockQuery := uint64(250) - 1
 	startBlock := uint64(68277132) // freeflow deployment block
-	// latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// endBlock := latestBlock.Height
-	endBlock := uint64(69106534)
+	latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
+	if err != nil {
+		panic(err)
+	}
+	endBlock := latestBlock.Height
+	// endBlock := uint64(69106534)
 
 	logger.Info("start scan", zap.Uint64("startBlock", startBlock), zap.Uint64("endBlock", endBlock))
 	blockRanges := flowUtils.GetBlockRanges(startBlock, endBlock, uint64(thread))
@@ -120,7 +121,7 @@ func main() {
 			flowClient,
 			logger,
 			svc,
-			flowUtils.FreeflowWithdrawEventType,
+			flowUtils.FreeflowDepositEventType, // FreeflowDepositEventType
 			&wg,
 		)
 	}
