@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flow-indexer/internal/adapter"
 	"flow-indexer/internal/domain/account"
 	flowEvent "flow-indexer/internal/domain/event"
@@ -101,12 +100,14 @@ func main() {
 	thread := 15
 	maxBlockQuery := uint64(250) - 1
 	startBlock := uint64(68277132) // freeflow deployment block
-	latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
-	if err != nil {
-		panic(err)
-	}
-	endBlock := latestBlock.Height
-	// endBlock := uint64(69106534)
+	endBlock := uint64(69434891)   // last scaned block
+
+	// startBlock := uint64(69240422) + 1 // last scaned block
+	// latestBlock, err := flowClient.GetLatestBlock(context.Background(), true)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// endBlock := latestBlock.Height
 
 	logger.Info("start scan", zap.Uint64("startBlock", startBlock), zap.Uint64("endBlock", endBlock))
 	blockRanges := flowUtils.GetBlockRanges(startBlock, endBlock, uint64(thread))
@@ -121,7 +122,7 @@ func main() {
 			flowClient,
 			logger,
 			svc,
-			flowUtils.FreeflowDepositEventType, // FreeflowDepositEventType
+			flowUtils.FreeflowWithdrawEventType, // FreeflowDepositEventType
 			&wg,
 		)
 	}

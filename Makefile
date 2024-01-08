@@ -30,11 +30,14 @@ deploy:
 	docker run -d --name $(IMAGE) -v certs:/var/www/.cache -p 80:80 -p 443:443 $(GCR_HOSTNAME)/$(GCP_PROJECT_ID)/$(IMAGE):$(LATEST_TAG)
 
 pg_dump:
-	docker exec postgres pg_dump -U abc postgres > backupfile.sql
+	docker exec postgres pg_dump -U abc postgres > backupfile_$(shell date +"%Y%m%d_%H%M%S").sql
 pg_dump_compressed:
 	docker exec postgres pg_dump -U abc postgres | gzip > backupfile.sql.gz
 
 pg_restore:
-	docker exec -i postgres psql -U abc postgres < backupfile.sql
+	docker exec -i postgres psql -U abc postgres < ${file}
 pg_restore_compressed:
 	gunzip -c backupfile.sql.gz | docker exec -i postgres psql -U abc postgres
+
+top100holders:
+	psql -h 127.0.0.1 -p 5432 -U abc -d postgres -c "SELECT * FROM flow_inscription_balance order by amount desc limit 100" > outputfile.csv

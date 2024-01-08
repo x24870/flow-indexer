@@ -88,6 +88,8 @@ func ScanBatchEvents(
 			logger.Debug("Event", zap.String("TransactionIndex", fmt.Sprintf("%d", e.TransactionIndex)))
 			logger.Debug("Event", zap.String("EventIndex", fmt.Sprintf("%d", e.EventIndex)))
 
+			// NOTE: the struct of deposit and withdraw events are the same
+			// so we can use the same function to parse them
 			flowEvent := FreeflowDeposit(e)
 			logger.Debug("Event", zap.Uint64("ID", flowEvent.ID()))
 			logger.Debug("Event", zap.String("Address", fmt.Sprintf("%x", flowEvent.Address())))
