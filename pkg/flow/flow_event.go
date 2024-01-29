@@ -17,6 +17,9 @@ func (evt FreeflowDeposit) ID() uint64 {
 }
 
 func (evt FreeflowDeposit) Address() []byte {
+	if evt.Value.Fields[1].(cadence.Optional).Value == nil {
+		return nil
+	}
 	return evt.Value.Fields[1].(cadence.Optional).Value.(cadence.Address).Bytes()
 }
 

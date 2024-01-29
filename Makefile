@@ -39,5 +39,5 @@ pg_restore:
 pg_restore_compressed:
 	gunzip -c backupfile.sql.gz | docker exec -i postgres psql -U abc postgres
 
-top100holders:
-	psql -h 127.0.0.1 -p 5432 -U abc -d postgres -c "SELECT * FROM flow_inscription_balance order by amount desc limit 100" > outputfile.csv
+holders:
+	psql -h 127.0.0.1 -p 5432 -U abc -d postgres -c "SELECT * FROM flow_inscription_balance order by amount desc" > outputfile.csv
